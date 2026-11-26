@@ -37,6 +37,11 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'text/html' });
     return res.end('<!doctype html><title>Handshake</title><p>Authorizing...</p>');
   }
+  if (req.url.startsWith('/guarded')) { // answers 401 without a session, with no password field
+    if (!logged) { res.writeHead(401, { 'content-type': 'text/html' }); return res.end('<!doctype html><h1>Unauthorized</h1>'); }
+    res.writeHead(200, { 'content-type': 'text/html' });
+    return res.end('<!doctype html><h1 id="me">Welcome</h1>');
+  }
   if (req.url.startsWith('/app')) {
     if (!logged) { res.writeHead(302, { location: '/login' + (auto ? '?auto' : '') }); return res.end(); }
     res.writeHead(200, { 'content-type': 'text/html' });
@@ -168,4 +173,11 @@ test('verify passes for a real session and honours the config key', { skip: !hav
   assert.equal(r.status, 0, r.stderr);
   assert.equal(JSON.parse(r.stdout).strategy, 'config login route');
   await run('logout', base);
+});
+
+test('a 401 page without a password field is "sign in first", not "no login needed"', { skip: !havePw }, async () => {
+  await run('logout', base);
+  const r = await run('login', base + '/guarded', '--no-window', '--json');
+  assert.equal(r.status, 1, r.stderr);
+  assert.doesNotMatch(r.stderr, /no login needed/);
 });

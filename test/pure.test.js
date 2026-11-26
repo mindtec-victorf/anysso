@@ -231,3 +231,11 @@ test('hint decisions: own login form needs no login.start; handshake needs a tar
   assert.equal(P.hintHandshake({ trail: ['app.test/auth', 'app.test/err'], host: 'app.test' }), null); // last target page is not a handshake
   assert.equal(P.hintHandshake({ trail: ['app.test/author'], host: 'app.test' }), null);
 });
+
+test('classify: 401/403 on the target means sign in first', () => {
+  const base = { url: 'https://app.example.com/', targetHost: 'app.example.com' };
+  assert.equal(P.classify({ ...base, httpStatus: 401 }), 'login');
+  assert.equal(P.classify({ ...base, httpStatus: 403 }), 'login');
+  assert.equal(P.classify({ ...base, httpStatus: 200 }), 'logged');
+  assert.equal(P.classify({ ...base, httpStatus: 401, url: 'https://idp.example.com/' }), 'elsewhere');
+});

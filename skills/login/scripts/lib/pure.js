@@ -144,10 +144,12 @@ function isLoginUrl(url) {
  *   'elsewhere' — on another host (identity provider, SSO portal, about:blank)
  * With `loggedInSelector` the caller's explicit signal wins over the heuristic.
  */
-function classify({ url, targetHost, hasPassword = false, selectorFound = null }) {
+function classify({ url, targetHost, hasPassword = false, selectorFound = null, httpStatus = null }) {
   let u;
   try { u = new URL(url); } catch (_) { return 'elsewhere'; }
   if (!/^https?:$/.test(u.protocol) || u.host !== targetHost) return 'elsewhere';
+  // 401/403 on the page itself means "sign in first", even when it shows no password field.
+  if (httpStatus === 401 || httpStatus === 403) return 'login';
   if (selectorFound !== null) return selectorFound ? 'logged' : 'login';
   return hasPassword || isLoginUrl(url) ? 'login' : 'logged';
 }

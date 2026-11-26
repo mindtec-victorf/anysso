@@ -41,6 +41,14 @@ const LOGGED_POLLS = 2; // consecutive polls on the same logged-in page before i
 const STUCK_POLLS = 3; // consecutive polls on the same off-target page before AnySSO reopens
 const MAX_REOPENS = 2; // reopening twice covers a redirect chain; more would fight the user
 
+// HTTP status of each page's latest main-document response (401/403 = not signed in).
+const docStatus = new WeakMap();
+function trackStatus(page) {
+  page.on('response', (r) => {
+    try { if (r.request().isNavigationRequest() && r.frame() === page.mainFrame()) docStatus.set(page, r.status()); } catch (_) { /* page closing */ }
+  });
+}
+
 async function snapshot(page, targetHost, selector) {
   const url = page.url();
   let hasPassword = false;
@@ -50,7 +58,7 @@ async function snapshot(page, targetHost, selector) {
       .some((e) => e.getClientRects().length > 0));
     if (selector) selectorFound = (await page.$(selector)) !== null;
   } catch (_) { /* page navigating: classify by URL only */ }
-  return { url, state: P.classify({ url, targetHost, hasPassword, selectorFound }) };
+  return { url, state: P.classify({ url, targetHost, hasPassword, selectorFound, httpStatus: docStatus.get(page) || null }) };
 }
 
 /** Hosts a context's pages navigate through (main frames) — reveals the identity provider. */
@@ -97,6 +105,7 @@ async function probe(url, { state, cookies, selector, insecure, visitFirst }) {
     trackHosts(ctx, hosts, trail);
     trackTokens(ctx, tokens);
     const page = await ctx.newPage();
+    trackStatus(page);
     // A login route that authenticates on visit (from the site config): hit it, then the target.
     if (visitFirst) { try { await page.goto(visitFirst, { waitUntil: 'networkidle', timeout: NAV_TIMEOUT_MS }); } catch (_) { /* judged below */ } }
     try { await page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS }); } catch (_) { /* judged below */ }
@@ -269,6 +278,8 @@ async function loginWindow(url, { selector, insecure, timeoutMs, log, size, afte
     trackHosts(win.ctx, hosts, trail);
     trackTokens(win.ctx, tokens);
     win.ctx.pages().forEach((pg) => P.addTrail(trail, pg.url())); // a window opened with --app already navigated
+    win.ctx.pages().forEach(trackStatus);
+    win.ctx.on('page', trackStatus);
     const first = win.ctx.pages()[0] || await win.ctx.newPage();
     if (!win.opened) await first.goto(startUrl, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS }).catch(() => {});
     await forcePopup(win.ctx, first, win.box);
