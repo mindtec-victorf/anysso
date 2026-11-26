@@ -1,0 +1,47 @@
+{
+  "name": "anysso",
+  "version": "0.1.0",
+  "description": "Log in to any web system once (SSO or not) and reuse the session from scripts, tests and AI agents.",
+  "license": "MIT",
+  "bin": {
+    "anysso": "skills/login/scripts/anysso.js"
+  },
+  "files": [
+    "skills/",
+    ".claude-plugin/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "peerDependencies": {
+    "playwright": ">=1.40"
+  },
+  "peerDependenciesMeta": {
+    "playwright": {
+      "optional": true
+    }
+  },
+  "keywords": [
+    "sso",
+    "login",
+    "session",
+    "cookies",
+    "playwright",
+    "claude-code",
+    "plugin",
+    "agent"
+  ],
+  "author": "AnySSO contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mindtec-victorf/anysso.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mindtec-victorf/anysso/issues"
+  }
+}

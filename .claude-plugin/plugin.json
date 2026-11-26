@@ -1,0 +1,16 @@
+{
+  "name": "anysso",
+  "version": "0.1.0",
+  "description": "Log in to any web system once (SSO or not) and reuse the session from scripts, tests and AI agents.",
+  "license": "MIT",
+  "keywords": [
+    "sso",
+    "login",
+    "session",
+    "cookies",
+    "playwright"
+  ],
+  "author": {
+    "name": "AnySSO contributors"
+  }
+}

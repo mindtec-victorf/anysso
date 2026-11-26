@@ -1,0 +1,16 @@
+{
+  "name": "anysso",
+  "owner": {
+    "name": "AnySSO contributors"
+  },
+  "plugins": [
+    {
+      "name": "anysso",
+      "source": "./",
+      "description": "Log in to any web system once (SSO or not) and reuse the session from scripts, tests and AI agents."
+    }
+  ],
+  "metadata": {
+    "description": "AnySSO \u2014 log in once to any web system and reuse the session."
+  }
+}
