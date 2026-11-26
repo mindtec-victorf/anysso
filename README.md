@@ -7,9 +7,9 @@
 **Log in once to any web system — SSO or not, local or production — and reuse the session from
 scripts, tests and AI agents.**
 
-![AnySSO in a terminal: login, instant reuse, an authenticated curl, status](docs/media/terminal.gif)
+![An AI agent signs in with AnySSO and takes a screenshot](docs/media/agent.gif)
 
-<sub>Demo app: a fictional "Acme CRM" on localhost. The terminal text is the real output of the CLI.</sub>
+<sub>An AI agent signs in and takes a screenshot — real commands and outputs, demo app.</sub>
 
 **Contributors wanted:** see [Help wanted!](#help-wanted).
 
@@ -22,10 +22,6 @@ scripts, tests and AI agents.**
   bearer token.
 - **Built for agents.** A bundled Claude Code skill tells the agent when to log in and how to hand
   the session to Playwright or curl.
-
-![The AnySSO login window on a demo sign-in page, then the dashboard](docs/media/login-window.gif)
-
-<sub>Demo app: a staged reproduction of the login window (520x720, the default size).</sub>
 
 ## How it works
 
@@ -89,6 +85,10 @@ The agent gets the `anysso:login` skill: when to log in, how to hand the session
 curl, and the safety rules.
 
 ## Usage
+
+![AnySSO in a terminal: login, instant reuse, an authenticated curl, status](docs/media/terminal.gif)
+
+<sub>Demo app: a fictional "Acme CRM" on localhost. The terminal text is the real output of the CLI.</sub>
 
 ```bash
 anysso consent                                  # once: allow reusing your browsers' sessions

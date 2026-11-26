@@ -1,5 +1,5 @@
 'use strict';
-// Regenerates docs/media/terminal.gif and docs/media/login-window.gif.
+// Regenerates docs/media/terminal.gif (agent.gif: see agent-demo.js).
 //   NODE_PATH=$(npm root -g) node docs/media/make/build.js
 // Needs Playwright + Chromium and ffmpeg (FFMPEG=/path/to/ffmpeg to override).
 // The terminal text is the real output of the real CLI against the fake Acme app (capture-output.js).
@@ -69,21 +69,6 @@ const e=document.createElement('div');e.innerHTML='<span class="p">$ </span><spa
   fs.writeFileSync(html, terminalHtml(out, home));
   const tv = await record(browser, { width: 900, height: 460 }, 16000, (p) => p.goto('file://' + html), 'terminal');
   toGif(tv, path.join(MEDIA, 'terminal.gif'), 900, 10);
-
-  const wv = await record(browser, { width: 520, height: 720 }, 10500, async (p) => {
-    const b = 'http://127.0.0.1:4174';
-    await p.goto(b + '/app'); // redirected to the Acme SSO page
-    await p.waitForTimeout(1500);
-    await p.type('#u', 'alice', { delay: 120 });
-    await p.type('#p', 'demo-password', { delay: 90 });
-    await p.waitForTimeout(600);
-    await p.click('#go');
-    await p.waitForTimeout(500);
-    await p.goto(b + '/signin-done'); // staged sign-in: cookie + redirect to the dashboard
-    await p.waitForTimeout(500);
-    await p.evaluate(() => { document.title = 'Acme CRM'; });
-  }, 'window');
-  toGif(wv, path.join(MEDIA, 'login-window.gif'), 520, 10);
 
   await browser.close(); server.close();
   fs.rmSync(tmp, { recursive: true, force: true });

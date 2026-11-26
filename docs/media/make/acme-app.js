@@ -14,7 +14,8 @@ small{display:block;text-align:center;color:#94a3b8;margin-top:18px}</style>
 <div class="card"><div class="logo">Acme <b>SSO</b></div><p>Sign in to continue to Acme CRM</p>
 <form onsubmit="return false"><label>Username</label><input id="u" autocomplete="off">
 <label>Password</label><input id="p" type="password"><button id="go">Sign in with SSO</button></form>
-<small>Protected by Acme Identity</small></div>`;
+<small>Protected by Acme Identity</small></div>
+<script>document.getElementById('go').onclick = () => { location.href = '/signin-done'; };</script>`;
 
 const DASH = (toast) => `<!doctype html><title>Acme CRM</title><style>
 *{box-sizing:border-box}body{margin:0;font:15px system-ui,sans-serif;background:#f1f5f9;color:#0f172a}
