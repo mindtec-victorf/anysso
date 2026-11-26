@@ -138,8 +138,10 @@ test('config add: dry run writes nothing; --yes writes atomically, replaces an i
   assert.equal(fs.existsSync(file), false);
 
   assert.equal(run('--site', one, '--yes').status, 0);
-  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
-  assert.equal(fs.statSync(h).mode & 0o777, 0o700);
+  if (process.platform !== 'win32') { // Windows has no POSIX modes
+    assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+    assert.equal(fs.statSync(h).mode & 0o777, 0o700);
+  }
   assert.equal(run('--site', JSON.stringify({ match: 'localhost:1' }), '--yes').status, 0);
   assert.equal(run('--site', JSON.stringify({ match: '*.acme.com', verify: '/me' }), '--yes').status, 0);
   const sites = JSON.parse(fs.readFileSync(file, 'utf8')).sites;
