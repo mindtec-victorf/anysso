@@ -10,7 +10,7 @@ function isBareHost(host) {
 }
 
 // Second-level labels that act as part of the public suffix under a 2-letter country TLD (co.uk).
-const SECOND_LEVEL_LABELS = ['co', 'com', 'net', 'org', 'gov', 'edu', 'ac'];
+const SECOND_LEVEL_LABELS = ['ac', 'co', 'com', 'coop', 'edu', 'gob', 'gov', 'int', 'ltd', 'mil', 'net', 'nom', 'org', 'plc', 'sch'];
 
 /**
  * Registrable site of a host ("app.login.example.com" -> "example.com"), used to pick which
@@ -28,13 +28,14 @@ function siteOf(host) {
 }
 
 /**
- * Resolve a site's `afterLogin` (a path or an absolute URL) against the target URL. Returns the
+ * Resolve a site's `afterLogin` (a path or an absolute URL) against the target URL. `{origin}` in it
+ * stands for the target's origin, for portals that open a system from a URL parameter. Returns the
  * absolute URL, or null when it is not on the same registrable site as the target.
  */
 function resolveAfterLogin(afterLogin, targetUrl) {
   try {
-    const u = new URL(afterLogin, targetUrl);
     const t = new URL(targetUrl);
+    const u = new URL(String(afterLogin).split('{origin}').join(t.origin), targetUrl);
     return /^https?:$/.test(u.protocol) && siteOf(u.hostname) === siteOf(t.hostname) ? u.href : null;
   } catch (_) { return null; }
 }

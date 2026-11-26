@@ -100,7 +100,7 @@ Precedence (first that exists wins, no merge): `--config <file>` > `./.anysso.js
 | `users` | alias to **test-user id** map; pick with `--user <alias>` |
 | `loggedIn` | CSS selector that exists only when logged in |
 | `cookieSites` | extra sites to import cookies from, e.g. the identity provider |
-| `afterLogin` | path or absolute URL on the same registrable site as the target. When the login window is signed in but rests on another host of that site, AnySSO opens it (default: the original URL), at most 2 times |
+| `afterLogin` | path or absolute URL on the same registrable site as the target. When the login window is signed in but rests on another host of that site, AnySSO opens it (default: the original URL), at most 2 times. `{origin}` stands for the target's origin, for portals that open a system from a URL parameter |
 | `timeout` | login-window timeout, a positive number of seconds |
 | `insecure` | `true` or `false`: accept invalid TLS certificates |
 | `testOnly` | allow the route login against a non-private host |

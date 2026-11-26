@@ -11,6 +11,8 @@ test('siteOf picks the registrable site', () => {
   assert.equal(P.siteOf('staging-app.acme.co.uk'), 'acme.co.uk');
   assert.equal(P.siteOf('.sso.acme.com.au'), 'acme.com.au');
   assert.equal(P.siteOf('service.gov.uk'), 'service.gov.uk');
+  assert.equal(P.siteOf('app.acme.coop.py'), 'acme.coop.py');
+  assert.equal(P.siteOf('hr.acme.ltd.uk'), 'acme.ltd.uk');
   assert.equal(P.siteOf('a.b.co.uk'), 'b.co.uk');
   assert.equal(P.siteOf('login.shop.example.io'), 'example.io'); // 2-letter TLD, no second-level label
   assert.equal(P.siteOf('localhost:8080'), 'localhost');
@@ -192,4 +194,10 @@ test('expiry conversions', () => {
   assert.equal(P.firefoxExpiry(1_900_000_000), 1_900_000_000);
   assert.equal(P.firefoxExpiry(1_900_000_000_000), 1_900_000_000);
   assert.equal(P.firefoxExpiry(0), -1);
+});
+
+test('afterLogin {origin} is the target origin, still same-site only', () => {
+  assert.equal(P.resolveAfterLogin('https://portal.acme.co.uk/open?app={origin}/auth', 'https://crm.acme.co.uk/home'),
+    'https://portal.acme.co.uk/open?app=https://crm.acme.co.uk/auth');
+  assert.equal(P.resolveAfterLogin('https://evil.example/x?{origin}', 'https://crm.acme.co.uk/home'), null);
 });
