@@ -111,3 +111,48 @@ test('a project file cannot weaken security unless trusted', () => {
   assert.deepEqual(config.trustedSite(site, 'flag', {}).dropped, []);
   assert.deepEqual(config.trustedSite(site, 'ANYSSO_HOME', {}).dropped, []);
 });
+
+test('login.start must be a non-empty string', () => {
+  assert.match(config.load(write('start.json', { sites: [{ match: 'x', login: { start: 5 } }] })).problems.join(' '), /login\.start/);
+  assert.deepEqual(config.load(write('start-ok.json', { sites: [{ match: 'x', login: { mode: 'window', start: '/portal' } }] })).problems, []);
+});
+
+test('verify must be a string and stay on the matched host', () => {
+  assert.deepEqual(config.load(write('v-ok.json', { sites: [{ match: 'a.acme.com', verify: '/me' }, { match: '*.acme.com', verify: 'https://b.acme.com/me' }] })).problems, []);
+  assert.match(config.load(write('v-bad.json', { sites: [{ match: 'a.acme.com', verify: 'https://evil.example/me' }] })).problems.join(' '), /verify must resolve to the target origin/);
+  assert.match(config.load(write('v-num.json', { sites: [{ match: 'a.acme.com', verify: 5 }] })).problems.join(' '), /verify must be a non-empty string/);
+});
+
+test('config add: dry run writes nothing; --yes writes atomically, replaces an identical match and rejects secrets', () => {
+  const { spawnSync } = require('child_process');
+  const cli = path.join(__dirname, '../skills/login/scripts/anysso.js');
+  const h = path.join(tmp, 'home-add');
+  const env = { ...process.env, ANYSSO_HOME: h };
+  const run = (...a) => spawnSync(process.execPath, [cli, 'config', 'add', ...a], { env, encoding: 'utf8', cwd: tmp });
+  const file = path.join(h, 'sites.json');
+  const one = JSON.stringify({ match: '*.acme.com', login: { start: 'https://portal.acme.com/' } });
+
+  const dry = run('--site', one);
+  assert.equal(dry.status, 0, dry.stderr);
+  assert.match(dry.stdout, /dry run: pass --yes to write/);
+  assert.equal(fs.existsSync(file), false);
+
+  assert.equal(run('--site', one, '--yes').status, 0);
+  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  assert.equal(fs.statSync(h).mode & 0o777, 0o700);
+  assert.equal(run('--site', JSON.stringify({ match: 'localhost:1' }), '--yes').status, 0);
+  assert.equal(run('--site', JSON.stringify({ match: '*.acme.com', verify: '/me' }), '--yes').status, 0);
+  const sites = JSON.parse(fs.readFileSync(file, 'utf8')).sites;
+  assert.equal(sites.length, 2);
+  assert.equal(sites[0].verify, '/me');
+  assert.equal(sites[0].login, undefined); // replaced, not merged
+
+  const bad = run('--site', JSON.stringify({ match: 'x', token: 'nope' }), '--yes');
+  assert.equal(bad.status, 2);
+  assert.match(bad.stderr, /secret-bearing keys/);
+  assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).sites.length, 2);
+
+  const other = path.join(tmp, 'other.json');
+  assert.equal(run('--site', one, '--file', other, '--yes').status, 0);
+  assert.equal(fs.existsSync(other), true);
+});

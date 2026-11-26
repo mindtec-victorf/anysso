@@ -1,7 +1,8 @@
 # Contributing to AnySSO
 
 Thanks for helping. AnySSO logs a user in to any web system once and reuses the session — for
-scripts, tests and AI agents.
+scripts, tests and AI agents. Looking for something to pick up? See the
+[Help wanted list](README.md#help-wanted).
 
 ## Ground rule: nothing internal
 
@@ -46,7 +47,10 @@ Keep branching and parsing logic in `pure.js` with a test; keep I/O thin.
 ## Testing a platform
 
 Tested on Windows and on Linux under WSL2. Linux and macOS are expected to work for the saved-session
-and login-window paths; reports and PRs welcome (help wanted).
+and login-window paths; reports and PRs welcome.
+
+The full list of contributions we are looking for lives in one place: the
+[Help wanted section of the README](README.md#help-wanted).
 
 1. Open a `Support for <platform>` issue (there is a template) so work is not duplicated.
 2. The login window must honor `--window-size` and open in normal state, also on a reused profile;

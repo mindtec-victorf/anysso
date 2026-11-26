@@ -54,9 +54,12 @@ async function snapshot(page, targetHost, selector) {
 }
 
 /** Hosts a context's pages navigate through (main frames) — reveals the identity provider. */
-function trackHosts(ctx, hosts) {
+function trackHosts(ctx, hosts, trail) {
   const watch = (page) => page.on('framenavigated', (f) => {
-    if (f === page.mainFrame()) { try { const h = new URL(f.url()).hostname; if (h) hosts.add(h); } catch (_) { /* about: */ } }
+    if (f === page.mainFrame()) {
+      try { const h = new URL(f.url()).hostname; if (h) hosts.add(h); } catch (_) { /* about: */ }
+      if (trail) P.addTrail(trail, f.url());
+    }
   });
   ctx.pages().forEach(watch);
   ctx.on('page', watch);
@@ -90,7 +93,8 @@ async function probe(url, { state, cookies, selector, insecure, visitFirst }) {
     if (cookies && cookies.length) await ctx.addCookies(cookies);
     const hosts = new Set();
     const tokens = [];
-    trackHosts(ctx, hosts);
+    const trail = [];
+    trackHosts(ctx, hosts, trail);
     trackTokens(ctx, tokens);
     const page = await ctx.newPage();
     // A login route that authenticates on visit (from the site config): hit it, then the target.
@@ -107,10 +111,20 @@ async function probe(url, { state, cookies, selector, insecure, visitFirst }) {
       last = s;
       await sleep(POLL_MS);
     }
-    return { status, hosts, tokens, state: await ctx.storageState() };
+    return { status, hosts, tokens, trail, landed: P.pagePath(page.url()), state: await ctx.storageState() };
   } finally {
     await b.close();
   }
+}
+
+/**
+ * Open `url` (already resolved to the target origin) in a fresh headless context with `state` and
+ * report { ok, landed }: ok only when it ends on the target host, off a login route, without a
+ * password field (and matching `selector` when set).
+ */
+async function verify(url, state, { selector, insecure }) {
+  const r = await probe(url, { state, selector, insecure });
+  return { ok: r.status === 'logged', landed: r.landed };
 }
 
 // --- Login window ---
@@ -229,10 +243,11 @@ function waitEnter() {
  * Show the login window and wait until the user is logged into the target: a tab on the target
  * host, off any login screen, for LOGGED_POLLS polls in a row (or ENTER on a TTY). When the window
  * is signed in but rests on another page of the same site, AnySSO opens `afterLogin` (a path or an
- * absolute URL on that site; default: the original URL) at most MAX_REOPENS times.
+ * absolute URL on that site; default: the original URL) at most MAX_REOPENS times. `start` (same
+ * rules) is where the window opens instead of the target, for systems entered through a portal.
  * Resolves { state, hosts, tokens }.
  */
-async function loginWindow(url, { selector, insecure, timeoutMs, log, size, afterLogin }) {
+async function loginWindow(url, { selector, insecure, timeoutMs, log, size, afterLogin, start, title }) {
   const targetHost = new URL(url).host;
   const targetSite = P.siteOf(new URL(url).hostname);
   let reopenUrl = url;
@@ -240,15 +255,32 @@ async function loginWindow(url, { selector, insecure, timeoutMs, log, size, afte
     reopenUrl = P.resolveAfterLogin(afterLogin, url);
     if (!reopenUrl) { log(`afterLogin ${afterLogin} is not on ${targetSite} — ignored`); reopenUrl = url; }
   }
-  const win = await openWindow(url, { insecure, log, size });
+  let startUrl = url;
+  if (start) {
+    startUrl = P.resolveAfterLogin(start, url);
+    if (!startUrl) { log(`login.start ${start} is not on ${targetSite} — ignored`); startUrl = url; }
+  }
+  const win = await openWindow(startUrl, { insecure, log, size });
   const hosts = new Set();
   const tokens = [];
+  const trail = [];
+  let last = null; // latest snapshot; on failure the caller reads it to hint
   try {
-    trackHosts(win.ctx, hosts);
+    trackHosts(win.ctx, hosts, trail);
     trackTokens(win.ctx, tokens);
+    win.ctx.pages().forEach((pg) => P.addTrail(trail, pg.url())); // a window opened with --app already navigated
     const first = win.ctx.pages()[0] || await win.ctx.newPage();
-    if (!win.opened) await first.goto(url, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS }).catch(() => {});
+    if (!win.opened) await first.goto(startUrl, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS }).catch(() => {});
     await forcePopup(win.ctx, first, win.box);
+    // The taskbar shows the page title ("Sign in", "Login"...): prefix it with what the window is for.
+    const tag = '\u{1F510} ' + (title || `Sign in to ${targetHost}`);
+    const keepTitle = (t) => {
+      const set = () => { if (!document.title.startsWith(t)) document.title = t + (document.title ? ' \u2014 ' + document.title : ''); };
+      set();
+      new MutationObserver(set).observe(document.documentElement, { subtree: true, childList: true, characterData: true });
+    };
+    await win.ctx.addInitScript(keepTitle, tag).catch(() => {});
+    for (const pg of win.ctx.pages()) await pg.evaluate(keepTitle, tag).catch(() => {});
     log(`login window open — sign in to ${targetHost}` + (process.stdin.isTTY ? ' (or press ENTER when done)' : ''));
     let enter = false;
     waitEnter().then(() => { enter = true; });
@@ -261,6 +293,8 @@ async function loginWindow(url, { selector, insecure, timeoutMs, log, size, afte
       if (!pages.length) throw new Error('login window closed before login finished');
       for (const page of pages) {
         const s = await snapshot(page, targetHost, selector);
+        last = s;
+        P.addTrail(trail, s.url);
         const prev = seen.get(page);
         const count = prev && prev.url === s.url && prev.state === s.state ? prev.count + 1 : 1;
         seen.set(page, { ...s, count });
@@ -279,10 +313,13 @@ async function loginWindow(url, { selector, insecure, timeoutMs, log, size, afte
     }
     if (!ok) throw new Error(`login not detected within ${Math.round(timeoutMs / 1000)}s`);
     hosts.add(new URL(url).hostname);
-    return { state: await win.ctx.storageState(), hosts, tokens };
+    return { state: await win.ctx.storageState(), hosts, tokens, trail, landed: P.pagePath(last ? last.url : url) };
+  } catch (e) {
+    e.trail = trail; e.last = last;
+    throw e;
   } finally {
     await win.close();
   }
 }
 
-module.exports = { playwright, probe, loginWindow };
+module.exports = { playwright, probe, verify, loginWindow };

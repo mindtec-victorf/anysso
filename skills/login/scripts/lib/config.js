@@ -14,7 +14,7 @@
  *         "login": { "route": "/auth/dev-login?user={user}", "mode": "route" | "window" },
  *         "users": { "alice": "1001", "bob": "1002" },
  *         "loggedIn": "#user-menu", "cookieSites": ["example.com"],
- *         "afterLogin": "/dashboard", "timeout": 300, "insecure": false, "testOnly": false }
+ *         "afterLogin": "/dashboard", "verify": "/account", "timeout": 300, "insecure": false, "testOnly": false }
  *     ]
  *   }
  *
@@ -44,10 +44,15 @@ function resolvePath(configFlag, cwd = process.cwd()) {
 
 /** Parse and validate a config file. Returns { config, problems }: problems is [] when valid. */
 function load(file) {
-  const problems = [];
   let config;
   try { config = JSON.parse(fs.readFileSync(file, 'utf8')); }
   catch (e) { return { config: null, problems: ['cannot parse JSON: ' + e.message] }; }
+  return validate(config);
+}
+
+/** Validate an already-parsed config object. Returns { config, problems }. */
+function validate(config) {
+  const problems = [];
   if (!config || typeof config !== 'object') return { config: null, problems: ['top level must be a JSON object'] };
 
   const secrets = P.forbiddenKeys(config);
@@ -64,6 +69,7 @@ function load(file) {
       if (typeof s.login !== 'object') problems.push(`${at}.login must be an object`);
       else {
         if (s.login.route !== undefined && typeof s.login.route !== 'string') problems.push(`${at}.login.route must be a string`);
+        if (s.login.start !== undefined && (typeof s.login.start !== 'string' || !s.login.start)) problems.push(`${at}.login.start must be a non-empty string (a path or an absolute URL)`);
         if (s.login.mode !== undefined && !['route', 'window'].includes(s.login.mode)) problems.push(`${at}.login.mode must be "route" or "window"`);
         if (typeof s.login.route === 'string' && s.login.route.includes('{user}') && (!s.users || !Object.keys(s.users).length)) problems.push(`${at}.login.route uses {user} but ${at}.users is empty`);
       }
@@ -74,9 +80,39 @@ function load(file) {
     const site = JSON.stringify(s.match);
     if (s.afterLogin !== undefined && (typeof s.afterLogin !== 'string' || !s.afterLogin)) problems.push(`${at}.afterLogin must be a non-empty string (a path or an absolute URL) — site ${site}`);
     if (s.timeout !== undefined && !(typeof s.timeout === 'number' && Number.isFinite(s.timeout) && s.timeout > 0)) problems.push(`${at}.timeout must be a positive number of seconds — site ${site}`);
+    if (s.verify !== undefined) {
+      if (typeof s.verify !== 'string' || !s.verify) problems.push(`${at}.verify must be a non-empty string (a path or a URL on the target) — site ${site}`);
+      else {
+        // An absolute URL must stay on a host the entry matches; a path always resolves to the target.
+        let u = null;
+        try { u = new URL(s.verify, 'http://relative.invalid'); } catch (_) { problems.push(`${at}.verify is not a valid path or URL — site ${site}`); }
+        const pats = Array.isArray(s.match) ? s.match : [s.match];
+        if (u && u.host !== 'relative.invalid' && !pats.some((p) => typeof p === 'string' && P.hostGlob(p, u.host, u.hostname))) problems.push(`${at}.verify must resolve to the target origin (${u.host} is not matched by ${at}.match) — site ${site}`);
+      }
+    }
     if (s.insecure !== undefined && typeof s.insecure !== 'boolean') problems.push(`${at}.insecure must be true or false — site ${site}`);
   }
   return { config: problems.length ? null : config, problems };
+}
+
+/**
+ * Merge a site entry into a config object: an entry with an identical `match` is replaced, otherwise
+ * the entry is appended. Returns a new object; other entries and keys are kept.
+ */
+function mergeSite(existing, site) {
+  const key = JSON.stringify(site.match);
+  const sites = [...((existing && existing.sites) || [])];
+  const i = sites.findIndex((s) => JSON.stringify(s.match) === key);
+  if (i >= 0) sites[i] = site; else sites.push(site);
+  return { ...(existing || {}), sites };
+}
+
+/** Atomic write: temp file (mode 0600) then rename, directory created with mode 0700. */
+function writeFile(file, obj) {
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+  const tmp = file + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(obj, null, 2) + '\n', { mode: 0o600 });
+  fs.renameSync(tmp, file);
 }
 
 /**
@@ -110,4 +146,4 @@ function trustedSite(site, origin, env = process.env) {
   return { site: copy, dropped };
 }
 
-module.exports = { homeFile, resolvePath, load, resolveLogin, trustedSite };
+module.exports = { homeFile, resolvePath, load, validate, mergeSite, writeFile, resolveLogin, trustedSite };

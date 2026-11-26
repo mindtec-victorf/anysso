@@ -20,8 +20,13 @@ stderr.
 
 ```bash
 node scripts/anysso.js login https://app.example.com/dashboard --json
-# {"file": ".../sessions/app.example.com/default.json", "source": "Firefox session", ...}
+# {"file": ".../sessions/app.example.com/default.json", "source": "Firefox session", "strategy": "Firefox session",
+#  "trail": ["app.example.com/dashboard", ...], "landed": "app.example.com/dashboard", "hints": []}
 ```
+
+`trail` lists the pages visited (`host + pathname`, max 30, consecutive duplicates collapsed; never a
+query string or fragment, which can carry tokens), `landed` is where login was declared, `hints`
+are suggestions for adapting (see "Adapting to a new system"). The human log ends with `trail: a → b → c`.
 
 It tries these in order and stops at the first that lands logged in:
 
@@ -65,6 +70,10 @@ across the SSO redirect chain during login and keeps the freshest, falling back 
 
 Several identities on one host: `--account alice`, `--account bob` (on both `login` and `export`).
 
+**Always name the login window.** Pass `--title` with what you are about to do, in the user's language
+(e.g. `--title "Open the CRM on staging"`): the window and its taskbar entry show it, so the user knows
+which window to sign in to and why.
+
 ## Site config
 
 AnySSO has no built-in knowledge of any system. A JSON config holds hosts, login routes and
@@ -84,6 +93,7 @@ Precedence (first that exists wins, no merge): `--config <file>` > `./.anysso.js
       "loggedIn": "#user-menu",
       "cookieSites": ["acme.com", "okta.com"],
       "afterLogin": "/dashboard",
+      "verify": "/account",
       "timeout": 300,
       "insecure": false,
       "testOnly": false
@@ -97,15 +107,17 @@ Precedence (first that exists wins, no merge): `--config <file>` > `./.anysso.js
 | `match` | host (with port), hostname, or glob (`*`); string or array. Matched against both host and hostname |
 | `login.route` | route that authenticates on visit; `{user}` is replaced by the chosen id. Relative to the target URL |
 | `login.mode` | `route` (default) or `window` (always use the login window) |
+| `login.start` | where the login window opens instead of the target (e.g. an SSO portal that hands the system its token); same registrable site as the target; `{origin}` allowed |
 | `users` | alias to **test-user id** map; pick with `--user <alias>` |
 | `loggedIn` | CSS selector that exists only when logged in |
 | `cookieSites` | extra sites to import cookies from, e.g. the identity provider |
 | `afterLogin` | path or absolute URL on the same registrable site as the target. When the login window is signed in but rests on another host of that site, AnySSO opens it (default: the original URL), at most 2 times. `{origin}` stands for the target's origin, for portals that open a system from a URL parameter |
+| `verify` | path or URL on the target's own origin, opened headless with the new session after any strategy declares success; accepted only if it stays on the target, off a login route, without a password field (and matches `loggedIn`). Otherwise nothing is saved and the next strategy runs. `--verify` overrides it |
 | `timeout` | login-window timeout, a positive number of seconds |
 | `insecure` | `true` or `false`: accept invalid TLS certificates |
 | `testOnly` | allow the route login against a non-private host |
 
-**Flags and config.** `--site` adds to `cookieSites`. `--insecure` and `"insecure": true` combine with
+**Flags and config.** `--verify` overrides `verify`. `--site` adds to `cookieSites`. `--insecure` and `"insecure": true` combine with
 OR (loopback hosts always accept invalid certificates). `--logged-in`, `--timeout` and `--user`
 override or select the matching config value. `--account` and `--window-size` are flags only.
 Validate a file with `anysso config check`.
@@ -121,6 +133,30 @@ Validate a file with `anysso config check`.
 - `./.anysso.json` can arrive with a cloned repository, so its `insecure` and `testOnly` are ignored
   (with a notice) unless the file is passed with `--config` or `ANYSSO_TRUST_PROJECT_CONFIG=1` is set.
 - The config holds test-user **ids, never passwords or tokens**; a secret-bearing key is rejected.
+
+## Adapting to a new system
+
+Some systems are opened from a portal: the portal signs the user in at an identity provider, then
+opens the system with a one-time token on a route like `{origin}/auth`. Read `trail`, `landed` and
+`hints` from `login --json` (or the stderr log) and follow the table:
+
+| Observation | Do |
+|-------------|----|
+| Landed on the target's own login form (hint: "shows its own login form") | The system is opened from a portal. Ask the user which portal they use (or read it from the trail) and set `login.start` to its sign-in page |
+| Signed in but stuck on the portal or identity provider | Set `afterLogin`, often the portal URL the user clicks to open the system, with `{origin}` where it names the system |
+| Many systems behind one portal | One entry with a glob `match` (`*.acme.com`). After the first login the window profile keeps the portal session, so the next systems open without typing |
+| Declared logged in, but the next run says the session expired (or a handshake page was accepted) | Add `verify` with a page only a logged user can see. If verify fails after a handshake page, the portal did not authorize this account for the system |
+
+Always: show the proposed entry to the user and write it only after they agree, then rerun `login`:
+
+```bash
+node scripts/anysso.js config add --site '{"match":"*.acme.com","login":{"start":"https://portal.acme.com/"},"verify":"/account"}'          # dry run: prints the entry
+node scripts/anysso.js config add --site '{...same...}' --yes    # writes $ANYSSO_HOME/sites.json (or --file <path>)
+```
+
+`config add` validates with the same rules as `config check` (secret-bearing keys rejected), keeps the
+other entries, and replaces an entry whose `match` is identical. Also always pass `--title`; never
+print token values; the trail never contains query strings.
 
 ## Environment variables
 
@@ -151,6 +187,7 @@ Validate a file with `anysso config check`.
 
 ```bash
 node scripts/anysso.js status            # saved sessions: host, account, cookie count, expiry (no values)
+node scripts/anysso.js config check      # validate the resolved config; `config add` writes one entry (dry run without --yes)
 node scripts/anysso.js doctor            # Node (>= 22.13), Playwright, readable browsers, consent, display
 node scripts/anysso.js consent --revoke  # stop reading browser cookies
 ```

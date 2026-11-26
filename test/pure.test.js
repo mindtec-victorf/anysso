@@ -201,3 +201,33 @@ test('afterLogin {origin} is the target origin, still same-site only', () => {
     'https://portal.acme.co.uk/open?app=https://crm.acme.co.uk/auth');
   assert.equal(P.resolveAfterLogin('https://evil.example/x?{origin}', 'https://crm.acme.co.uk/home'), null);
 });
+
+test('trail keeps host+pathname only, collapses consecutive duplicates and caps at 30', () => {
+  const t = [];
+  for (const u of ['https://a.test/x?token=SECRET#frag', 'https://a.test/x?other=1', 'https://b.test:8443/y', 'about:blank', 'https://a.test/x']) P.addTrail(t, u);
+  assert.deepEqual(t, ['a.test/x', 'b.test:8443/y', 'a.test/x']);
+  assert.equal(P.pagePath('https://a.test/p?q=1#h'), 'a.test/p');
+  assert.equal(P.pagePath('not a url'), null);
+  const big = [];
+  for (let i = 0; i < 40; i++) P.addTrail(big, 'https://a.test/p' + i);
+  assert.equal(big.length, 30);
+  assert.equal(big[29], 'a.test/p39');
+  assert.equal(big[0], 'a.test/p10');
+});
+
+test('resolveVerify stays on the target origin', () => {
+  assert.equal(P.resolveVerify('/me', 'https://app.test/x?y=1'), 'https://app.test/me');
+  assert.equal(P.resolveVerify('https://app.test/me', 'https://app.test/'), 'https://app.test/me');
+  assert.equal(P.resolveVerify('https://other.test/me', 'https://app.test/'), null);
+  assert.equal(P.resolveVerify('//other.test/me', 'https://app.test/'), null);
+});
+
+test('hint decisions: own login form needs no login.start; handshake needs a target-host handshake path', () => {
+  assert.match(P.hintOwnLoginForm({ state: 'login', host: 'app.test', hasStart: false }), /^app\.test shows its own login form; .*login\.start.*Adapting to a new system/);
+  assert.equal(P.hintOwnLoginForm({ state: 'login', host: 'app.test', hasStart: true }), null);
+  assert.equal(P.hintOwnLoginForm({ state: 'elsewhere', host: 'app.test', hasStart: false }), null);
+  assert.match(P.hintHandshake({ trail: ['idp.test/login', 'app.test/auth'], host: 'app.test' }), /did not authorize/);
+  assert.match(P.hintHandshake({ trail: ['app.test/gate/callback', 'idp.test/x'], host: 'app.test' }), /did not authorize/);
+  assert.equal(P.hintHandshake({ trail: ['app.test/auth', 'app.test/err'], host: 'app.test' }), null); // last target page is not a handshake
+  assert.equal(P.hintHandshake({ trail: ['app.test/author'], host: 'app.test' }), null);
+});

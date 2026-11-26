@@ -152,6 +152,48 @@ function classify({ url, targetHost, hasPassword = false, selectorFound = null }
   return hasPassword || isLoginUrl(url) ? 'login' : 'logged';
 }
 
+/** host+pathname of an http(s) URL, or null. Never the query or fragment: they can carry tokens. */
+function pagePath(url) {
+  try { const u = new URL(url); return /^https?:$/.test(u.protocol) ? u.host + u.pathname : null; } catch (_) { return null; }
+}
+
+const TRAIL_MAX = 30; // enough to show a portal hand-off; the oldest entries drop first
+
+/** Append a page path to the trail unless it repeats the last one; keeps at most TRAIL_MAX entries. */
+function pushTrail(trail, entry) {
+  if (entry && trail[trail.length - 1] !== entry) { trail.push(entry); if (trail.length > TRAIL_MAX) trail.shift(); }
+  return trail;
+}
+const addTrail = (trail, url) => pushTrail(trail, pagePath(url));
+
+/**
+ * Resolve a `verify` path or URL against the target; null unless it stays on the target's own
+ * origin (the same rule as the login route).
+ */
+function resolveVerify(verify, targetUrl) {
+  try {
+    const t = new URL(targetUrl), u = new URL(String(verify), t);
+    return u.origin === t.origin ? u.href : null;
+  } catch (_) { return null; }
+}
+
+const HANDSHAKE_PATH = /\/(auth|sso|callback|token)(\/|$)/i;
+
+/** Hint when the login window ended on the target's own login form and no login.start is set. */
+function hintOwnLoginForm({ state, host, hasStart }) {
+  return state === 'login' && !hasStart
+    ? `${host} shows its own login form; if this system is opened from a portal, set login.start to the portal's sign-in page (see SKILL.md "Adapting to a new system")`
+    : null;
+}
+
+/** Hint when verify failed and the last target-host page of the trail looks like a portal hand-off. */
+function hintHandshake({ trail, host }) {
+  const last = [...trail].reverse().find((e) => e === host || e.startsWith(host + '/'));
+  return last && HANDSHAKE_PATH.test(last.slice(host.length))
+    ? `the portal hand-off (${last}) did not authorize this account for ${host}; ask the user to open the system from the portal once, or use another account`
+    : null;
+}
+
 /** Cookie (Playwright shape) is sent to `url` at time `now`. */
 function cookieMatchesUrl(c, url, now = Date.now() / 1000) {
   const u = new URL(url);
@@ -277,6 +319,6 @@ const sameSite = (v) => SAMESITE[v] || 'Lax';
 
 module.exports = {
   siteOf, resolveAfterLogin, parseWindowSize, nodeAtLeast, hostGlob, matchSite, isPrivateHost, isDenylisted, userRoute, forbiddenKeys, centerBox,
-  isLoopback, isLoginUrl, classify, cookieMatchesUrl, cookieHeader, netscapeJar,
+  isLoopback, isLoginUrl, classify, pagePath, pushTrail, addTrail, resolveVerify, hintOwnLoginForm, hintHandshake, cookieMatchesUrl, cookieHeader, netscapeJar,
   isJwt, bearerOf, findToken, filterState, chromiumKey, chromiumDecrypt, chromiumExpiry, firefoxExpiry, sameSite,
 };

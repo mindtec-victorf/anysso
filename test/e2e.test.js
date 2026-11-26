@@ -33,6 +33,10 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'text/html', 'set-cookie': `sid=${user}; path=/` });
     return res.end('<p>ok</p>');
   }
+  if (req.url.startsWith('/gate')) { // a handshake page: no password field, but no session either
+    res.writeHead(200, { 'content-type': 'text/html' });
+    return res.end('<!doctype html><title>Handshake</title><p>Authorizing...</p>');
+  }
   if (req.url.startsWith('/app')) {
     if (!logged) { res.writeHead(302, { location: '/login' + (auto ? '?auto' : '') }); return res.end(); }
     res.writeHead(200, { 'content-type': 'text/html' });
@@ -132,4 +136,36 @@ test('login window: detects the login and saves the session', { skip: !havePw ||
   assert.equal(code, 0, err);
   assert.equal(JSON.parse(out).source, 'login window');
   assert.equal((await run('export', base + '/app/home')).stdout.trim(), 'sid=good');
+});
+
+test('verify rejects a handshake page that looks logged in; without it the session is (wrongly) accepted', { skip: !havePw }, async () => {
+  const gate = base + '/gate/callback?code=SECRET';
+  const loose = await run('login', gate, '--no-window', '--no-browser', '--fresh', '--json');
+  assert.equal(loose.status, 0, loose.stderr);
+  const j = JSON.parse(loose.stdout);
+  assert.equal(j.strategy, 'no login needed');
+  assert.equal(j.landed, new URL(base).host + '/gate/callback');
+  assert.ok(j.trail.length && j.trail.every((t) => !t.includes('?') && !t.includes('SECRET')), loose.stdout);
+  assert.match(loose.stderr, /trail: /);
+  await run('logout', base);
+
+  const strict = await run('login', gate, '--no-window', '--no-browser', '--fresh', '--verify', '/app/home');
+  assert.equal(strict.status, 1, strict.stderr);
+  assert.match(strict.stderr, /verify failed: \/app\/home landed on 127\.0\.0\.1:\d+\/login/);
+  assert.match(strict.stderr, /hint: .*did not authorize/);
+  assert.equal((await run('export', base)).status, 1); // nothing was saved
+
+  const off = await run('login', gate, '--no-window', '--no-browser', '--fresh', '--verify', 'https://elsewhere.example/me');
+  assert.equal(off.status, 2, off.stderr);
+});
+
+test('verify passes for a real session and honours the config key', { skip: !havePw }, async () => {
+  const cfgFile = path.join(home, 'verify.json');
+  fs.writeFileSync(cfgFile, JSON.stringify({ sites: [
+    { match: '127.0.0.1', login: { route: '/devlogin?user={user}' }, users: { alice: 'good' }, verify: '/app/home' },
+  ] }));
+  const r = await run('login', base + '/app/home', '--no-window', '--no-browser', '--fresh', '--config', cfgFile, '--user', 'alice', '--json');
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(JSON.parse(r.stdout).strategy, 'config login route');
+  await run('logout', base);
 });
